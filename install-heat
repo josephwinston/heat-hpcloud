@@ -2,13 +2,10 @@
 
 set -e
 
-PUBLIC_IP=ETH0=$(ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
+PUBLIC_IP=$(ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
 DATABASE_ROOT_PASSWORD=`cat /proc/sys/kernel/random/uuid`
 DATABASE_HEAT_PASSWORD=`cat /proc/sys/kernel/random/uuid`
 RABBITMQ_PASSWORD=`cat /proc/sys/kernel/random/uuid`
-# REGION="az-1.region-a.geo-1"
-REGION="region-a.geo-1"
-AUTH_URL="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/"
 
 if [ -e "/root/localrc" ]
 then
@@ -20,11 +17,6 @@ else
     echo DATABASE_HEAT_PASSWORD=$DATABASE_HEAT_PASSWORD >> /root/localrc
     echo RABBITMQ_PASSWORD=$RABBITMQ_PASSWORD >> /root/localrc
 fi
-
-echo " * Region will be set to '${REGION}'..."
-echo " * Auth URL will be set to '${AUTH_URL}'..."
-
-sleep 3
 
 echo
 echo "=== Installing Heat ==="
@@ -59,7 +51,7 @@ auth_encryption_key = $(hexdump -n 16 -v -e '/1 "%02x"' /dev/random)
 heat_metadata_server_url = http://${PUBLIC_IP}:8000
 heat_waitcondition_server_url = http://${PUBLIC_IP}:8000/v1/waitcondition
 heat_watch_server_url = http://${PUBLIC_IP}:8003
-region_name_for_services = ${REGION}
+region_name_for_services = REGION
 sql_connection = mysql://heat:${DATABASE_HEAT_PASSWORD}@localhost/heat
 debug = True
 log_dir = /var/log/heat/
@@ -67,7 +59,7 @@ plugin_dirs = /root/heat/contrib/heat_keystoneclient_v2
 keystone_backend = heat.engine.plugins.heat_keystoneclient_v2.client.KeystoneClientV2
 
 [keystone_authtoken]
-auth_uri = ${AUTH_URL}
+auth_uri = AUTH_URL
 
 [paste_deploy]
 flavor = standalone

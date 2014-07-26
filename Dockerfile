@@ -43,11 +43,9 @@ RUN pip install heat-cfntools
 
 ADD ./my.cnf /etc/mysql/conf.d/my.cnf
 ADD ./mysqld_charset.cnf /etc/mysql/conf.d/mysqld_charset.cnf
-ADD ./create_mysql_admin_user.sh /root/
 ADD ./install-heat /usr/local/sbin/
 ADD ./start-heat /usr/local/sbin/
 RUN chmod a+x /usr/local/sbin/install-heat
 RUN chmod a+x /usr/local/sbin/start-heat
-RUN chmod a+x /root/create_mysql_admin_user.sh
 RUN /usr/local/sbin/install-heat
-CMD /usr/local/sbin/start-heat
+CMD /usr/local/sbin/start-heat USWest

@@ -1,33 +1,84 @@
 #!/bin/bash
 
-if [[ ! -e /var/run/heatinit.pid ]]; then
-    source /root/localrc
+function install_mysql {
+    mysql_install_db &>> /tmp/mysql.log
+}
 
-    echo "Configuring MySQL..."
-    mysql_install_db
-    /usr/bin/mysqld_safe & 
-    /root/create_mysql_admin_user.sh
+function start_mysql {
+    /usr/bin/mysqld_safe &>> /tmp/mysql.log & 
 
-    echo "Updating rabbitmq password..."
-    /etc/init.d/rabbitmq-server start
-    rabbitmqctl change_password guest "${RABBITMQ_PASSWORD}"
+    RET=1
+    while [[ RET -ne 0 ]]; do
+	sleep 5
+	mysql -uroot -e "status" > /dev/null 2>&1
+	RET=$?
+    done
+}
 
-    echo "Setting up heat database..."
-    heat-db-setup deb --yes -r "${DATABASE_ROOT_PASSWORD}" -p "${DATABASE_HEAT_PASSWORD}"
+function reset_mysql_root {
+    DEB_PASS=`cat /etc/mysql/debian.cnf | grep password | awk '{print $3}' | head -1`
+    mysql -u root -e "GRANT ALL PRIVILEGES ON *.* TO 'debian-sys-maint'@'localhost' IDENTIFIED BY '${DEB_PASS}'"
+    mysqladmin -u root password ${DATABASE_ROOT_PASSWORD}
+    mysqladmin -u root -h `hostname` password ${DATABASE_ROOT_PASSWORD}
+}
 
-    touch /var/run/heatinit.pid
-else
-    echo "Now starting MySQL..."
-    # /etc/init.d/mysql start
-    mysqld_safe & 
-    sleep 2
+function set_openstack_region {
+    if [[ $1 == "USEast" ]]; then
+	sed -i -e 's/REGION/region-b.geo-1/g' /etc/heat/heat.conf
+	sed -i -e 's/AUTH_URL/https:\/\/region-b.geo-1.identity.hpcloudsvc.com:35357\/v2.0\//g' /etc/heat/heat.conf
+    else
+	sed -i -e 's/REGION/region-a.geo-1/g' /etc/heat/heat.conf
+	sed -i -e 's/AUTH_URL/https:\/\/region-a.geo-1.identity.hpcloudsvc.com\:35357\/v2.0\//g' /etc/heat/heat.conf
+    fi
+}
 
-    echo "Now starting RabbitMQ..."
-    /etc/init.d/rabbitmq-server start
+function start_rabbitmq {
+    /etc/init.d/rabbitmq-server start &>> /tmp/rabbitmq.log
+}
+
+function reset_rabbitmq_password {
+    rabbitmqctl change_password guest "${RABBITMQ_PASSWORD}" &>> /tmp/rabbitmq.log
+}
+
+function start_heat {
+    heat-engine &>> /tmp/heat.log &
+    heat-api &>> /tmp/heat.log &
+    heat-api-cfn &>> /tmp/heat.log &
+    heat-api-cloudwatch &>> /tmp/heat.log 
+}
+
+function start_heat_prereqs {
+    if [[ ! -e /var/run/heatinit.pid ]]; then
+	echo "Configuring MySQL..."
+	install_mysql
+	start_mysql
+	reset_mysql_root
+
+	echo "Updating rabbitmq password..."
+	/etc/init.d/rabbitmq-server start
+	start_rabbitmq
+	reset_rabbitmq_password
+
+	echo "Setting up heat database..."
+	heat-db-setup deb --yes -r "${DATABASE_ROOT_PASSWORD}" -p "${DATABASE_HEAT_PASSWORD}" &>> /tmp/heatdb.log
+
+	touch /var/run/heatinit.pid
+    else
+	echo "Now starting MySQL..."
+	start_mysql
+
+	echo "Now starting RabbitMQ..."
+	start_rabbitmq
 fi
+}
 
-echo "Now starting heat in the background..."
-heat-engine &>> /tmp/heat.log &
-heat-api &>> /tmp/heat.log &
-heat-api-cfn &>> /tmp/heat.log &
-heat-api-cloudwatch &>> /tmp/heat.log 
+source /root/localrc
+
+echo "Configuring heat region..."
+set_openstack_region $1
+
+echo "Starting heat prereqs..."
+start_heat_prereqs
+
+echo "Starting heat in the background..."
+start_heat
