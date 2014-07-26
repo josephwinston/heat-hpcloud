@@ -1,27 +1,33 @@
 #!/bin/bash
 
-if [[ ! -e /var/log/heat/heatinit ]]; then
+if [[ ! -e /var/run/heatinit.pid ]]; then
     source /root/localrc
 
-    echo " * Updating rabbitmq password..."
+    echo "Configuring MySQL..."
+    mysql_install_db
+    /usr/bin/mysqld_safe & 
+    /root/create_mysql_admin_user.sh
+
+    echo "Updating rabbitmq password..."
+    /etc/init.d/rabbitmq-server start
     rabbitmqctl change_password guest "${RABBITMQ_PASSWORD}"
 
-    echo " * Setting up heat database..."
-    bin/heat-db-setup deb -r "${DATABASE_PASSWORD}"
+    echo "Setting up heat database..."
+    heat-db-setup deb --yes -r "${DATABASE_ROOT_PASSWORD}" -p "${DATABASE_HEAT_PASSWORD}"
 
-    touch /var/log/heat/heatinit
+    touch /var/run/heatinit.pid
+else
+    echo "Now starting MySQL..."
+    # /etc/init.d/mysql start
+    mysqld_safe & 
+    sleep 2
+
+    echo "Now starting RabbitMQ..."
+    /etc/init.d/rabbitmq-server start
 fi
 
 echo "Now starting heat in the background..."
-heat-engine &> /dev/null &
-heat-api &> /dev/null &
-
-echo
-echo "heat-engine pid: $(pidof -x heat-engine)"
-echo "heat-api pid: $(pidof -x heat-api)"
-echo "heat logs: /var/log/heat"
-
-echo
-echo "To access heat, export HEAT_URL=http://${PUBLIC_IP}:8004/v1/\${OS_TENANT_ID}"
-echo "Newer versions of heat client also require: export OS_NO_CLIENT_AUTH=1"
-echo
+heat-engine &>> /tmp/heat.log &
+heat-api &>> /tmp/heat.log &
+heat-api-cfn &>> /tmp/heat.log &
+heat-api-cloudwatch &>> /tmp/heat.log 

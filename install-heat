@@ -2,10 +2,12 @@
 
 set -e
 
-PUBLIC_IP=127.0.0.1
-DATABASE_PASSWORD=`cat /proc/sys/kernel/random/uuid`
+PUBLIC_IP=ETH0=$(ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
+DATABASE_ROOT_PASSWORD=`cat /proc/sys/kernel/random/uuid`
+DATABASE_HEAT_PASSWORD=`cat /proc/sys/kernel/random/uuid`
 RABBITMQ_PASSWORD=`cat /proc/sys/kernel/random/uuid`
-REGION="az-1.region-a.geo-1"
+# REGION="az-1.region-a.geo-1"
+REGION="region-a.geo-1"
 AUTH_URL="https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/"
 
 if [ -e "/root/localrc" ]
@@ -14,7 +16,8 @@ then
     source /root/localrc
 else
     echo " * No localrc is detected... "
-    echo DATABASE_PASSWORD=$DATABASE_PASSWORD >> /root/localrc
+    echo DATABASE_ROOT_PASSWORD=$DATABASE_ROOT_PASSWORD >> /root/localrc
+    echo DATABASE_HEAT_PASSWORD=$DATABASE_HEAT_PASSWORD >> /root/localrc
     echo RABBITMQ_PASSWORD=$RABBITMQ_PASSWORD >> /root/localrc
 fi
 
@@ -26,26 +29,6 @@ sleep 3
 echo
 echo "=== Installing Heat ==="
 echo
-
-echo " * Preseeding mysql server configuration..."
-cat << MYSQL_PRESEED | debconf-set-selections
-mysql-server mysql-server/root_password password ${DATABASE_PASSWORD}
-mysql-server mysql-server/root_password_again password ${DATABASE_PASSWORD}
-mysql-server mysql-server/start_on_boot boolean true
-MYSQL_PRESEED
-
-echo " * Downloading heat..."
-cd heat
-echo " * Installing additional python dependencies..."
-#XXX: Work around 'TypeError: dist must be a Distribution instance'.
-# pip install requests==1.2.2
-pip install -r requirements.txt
-# XXX: test packages needed due to bug in plugin loading in heat
-pip install --quiet -r test-requirements.txt
-echo " * Installing heat package in 'developer mode'..."
-python setup.py develop --quiet
-pip install --quiet python-heatclient
-pip install heat-cfntools
 
 echo " * Patching heat to run against HP Cloud..."
 git apply << EOF
@@ -77,10 +60,10 @@ heat_metadata_server_url = http://${PUBLIC_IP}:8000
 heat_waitcondition_server_url = http://${PUBLIC_IP}:8000/v1/waitcondition
 heat_watch_server_url = http://${PUBLIC_IP}:8003
 region_name_for_services = ${REGION}
-sql_connection = mysql://heat:heat@localhost/heat
+sql_connection = mysql://heat:${DATABASE_HEAT_PASSWORD}@localhost/heat
 debug = True
 log_dir = /var/log/heat/
-plugin_dirs = /home/ubuntu/heat-hpcloud/heat/contrib/heat_keystoneclient_v2
+plugin_dirs = /root/heat/contrib/heat_keystoneclient_v2
 keystone_backend = heat.engine.plugins.heat_keystoneclient_v2.client.KeystoneClientV2
 
 [keystone_authtoken]
@@ -90,6 +73,7 @@ auth_uri = ${AUTH_URL}
 flavor = standalone
 EOF
 
+# keystone_backend = heat.common.heat_keystoneclient.KeystoneClientV2
 echo " * Creating log directory at '/var/log/heat/'..."
 mkdir -p /var/log/heat/
 chown -R `whoami` /var/log/heat
