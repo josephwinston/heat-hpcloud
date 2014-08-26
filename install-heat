@@ -54,9 +54,12 @@ heat_watch_server_url = http://${PUBLIC_IP}:8003
 region_name_for_services = REGION
 sql_connection = mysql://heat:${DATABASE_HEAT_PASSWORD}@localhost/heat
 debug = True
+action_retry_limit = 8
+stack_action_timeout = 5400
 log_dir = /var/log/heat/
 plugin_dirs = /root/heat/contrib/heat_keystoneclient_v2
 keystone_backend = heat.engine.plugins.heat_keystoneclient_v2.client.KeystoneClientV2
+#keystone_backend=heat.common.heat_keystoneclient.KeystoneClientV3
 
 [keystone_authtoken]
 auth_uri = AUTH_URL
